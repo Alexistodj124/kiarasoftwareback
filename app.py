@@ -16,7 +16,7 @@ def create_app():
     app.config.from_object(Config)
 
     # Habilitar CORS para el front (localhost:5173)
-    CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+    CORS(app, resources={r"/*": {"origins": "*"}})
     # Si quieres permitir cualquier origen durante desarrollo:
     # CORS(app)
 
