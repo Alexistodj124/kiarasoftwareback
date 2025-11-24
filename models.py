@@ -1,5 +1,6 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Numeric
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
@@ -19,23 +20,88 @@ class Cliente(db.Model):
         return f"<Cliente {self.nombre}>"
 
 
+class CategoriaProducto(db.Model):
+    __tablename__ = "categorias_productos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), unique=True, nullable=False)
+    descripcion = db.Column(db.String(255), nullable=True)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # Una categoría puede tener muchos productos
+    productos = db.relationship("Producto", back_populates="categoria")
+
+    def __repr__(self):
+        return f"<CategoriaProducto {self.nombre}>"
+    
+class MarcaProducto(db.Model):
+    __tablename__ = "marcas_productos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), unique=True, nullable=False)
+    descripcion = db.Column(db.String(255), nullable=True)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # Una marca puede tener muchos productos
+    productos = db.relationship("Producto", back_populates="marca")
+
+    def __repr__(self):
+        return f"<MarcaProducto {self.nombre}>"
+
+
+
+class CategoriaServicio(db.Model):
+    __tablename__ = "categorias_servicios"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), unique=True, nullable=False)
+    descripcion = db.Column(db.String(255), nullable=True)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # Una categoría puede tener muchos servicios
+    servicios = db.relationship("Servicio", back_populates="categoria")
+
+    def __repr__(self):
+        return f"<CategoriaServicio {self.nombre}>"
+
+
 class Producto(db.Model):
     __tablename__ = "productos"
 
     id = db.Column(db.Integer, primary_key=True)
-    marca = db.Column(db.String(120), nullable=False)
-    descripcion = db.Column(db.String(255), nullable=False)
-    categoria = db.Column(db.String(100), nullable=False)
-    costo = db.Column(db.Float, nullable=False)
-    precio = db.Column(db.Float, nullable=False)
-    cantidad = db.Column(db.Integer, nullable=False, default=0)
-    imagen = db.Column(db.String(255))
 
-    # Relación inversa: este producto puede aparecer en muchos items de orden
+    # 🔹 Marca (FK)
+    marca_id = db.Column(
+        db.Integer,
+        db.ForeignKey("marcas_productos.id"),
+        nullable=True
+    )
+    marca = db.relationship("MarcaProducto", back_populates="productos")
+
+    descripcion = db.Column(db.String(255), nullable=False)
+
+    # 🔹 Categoría (FK)
+    categoria_id = db.Column(
+        db.Integer,
+        db.ForeignKey("categorias_productos.id"),
+        nullable=True
+    )
+    categoria = db.relationship("CategoriaProducto", back_populates="productos")
+
+    costo = db.Column(Numeric(10, 2), nullable=False)
+    precio = db.Column(Numeric(10, 2), nullable=False)
+    cantidad = db.Column(db.Integer, nullable=False, default=0)
+    imagen = db.Column(db.Text)
+
     orden_items = db.relationship("OrdenItem", back_populates="producto")
 
     def __repr__(self):
-        return f"<Producto {self.marca} - {self.descripcion}>"
+        return f"<Producto {self.id} - {self.descripcion}>"
+
+
 
 
 class Servicio(db.Model):
@@ -43,16 +109,23 @@ class Servicio(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     descripcion = db.Column(db.String(255), nullable=False)
-    categoria = db.Column(db.String(100), nullable=False)
-    costo = db.Column(db.Float, nullable=False)
-    precio = db.Column(db.Float, nullable=False)
-    imagen = db.Column(db.String(255))
 
-    # Este servicio puede aparecer en muchos items de orden
+    categoria_id = db.Column(
+        db.Integer,
+        db.ForeignKey("categorias_servicios.id"),
+        nullable=True
+    )
+    categoria = db.relationship("CategoriaServicio", back_populates="servicios")
+
+    costo = db.Column(Numeric(10, 2), nullable=False)
+    precio = db.Column(Numeric(10, 2), nullable=False)
+    imagen = db.Column(db.Text)
+
     orden_items = db.relationship("OrdenItem", back_populates="servicio")
 
     def __repr__(self):
         return f"<Servicio {self.descripcion}>"
+
 
 
 class Orden(db.Model):
