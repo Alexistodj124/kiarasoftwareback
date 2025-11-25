@@ -4,8 +4,6 @@ from models import db, Producto, Servicio, Cliente, Orden, OrdenItem, Usuario, E
 from flask_migrate import Migrate
 from datetime import datetime
 from flask_cors import CORS
-from datetime import datetime
-
 
 
 migrate = Migrate()
@@ -352,7 +350,6 @@ def create_app():
                 for item in orden.items
             ],
         }
-    from datetime import datetime
 
     def parse_iso_datetime(value: str) -> datetime:
         """
