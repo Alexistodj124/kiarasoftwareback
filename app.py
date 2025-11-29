@@ -326,6 +326,8 @@ def create_app():
             "id": orden.id,
             "codigo": orden.codigo,
             "fecha": orden.fecha.isoformat(),
+            "descuento": float(orden.descuento) if orden.descuento is not None else 0.0,
+            "total": float(orden.total) if orden.total is not None else 0.0,
             "empleada": None,  # compat: ahora las empleadas van a nivel de item
             "cliente": {
                 "id": orden.cliente.id,
@@ -420,6 +422,7 @@ def create_app():
         {
           "codigo": "ORD-001",
           "fecha": "2025-11-10T10:10:00Z",   // opcional
+          "descuento": 25.50,                // opcional, descuento fijo en moneda
           "cliente": {
             "id": 1                      // OPCIÓN 1: cliente existente
           }
@@ -469,11 +472,13 @@ def create_app():
 
         fecha_str = data.get("fecha")
         fecha = parse_iso_datetime(fecha_str) if fecha_str else datetime.utcnow()
+        descuento = max(float(data.get("descuento", 0) or 0), 0.0)
 
         orden = Orden(
             codigo=codigo,
             fecha=fecha,
-            cliente=cliente
+            cliente=cliente,
+            descuento=descuento,
         )
         db.session.add(orden)
         db.session.flush()  # para tener orden.id
@@ -483,6 +488,7 @@ def create_app():
         if not items_data:
             return jsonify({"error": "debe incluir al menos un item en 'items'"}), 400
 
+        subtotal = 0.0
         for item_data in items_data:
             tipo = item_data.get("tipo")
             cantidad = item_data.get("cantidad", 1)
@@ -556,6 +562,9 @@ def create_app():
                 )
 
             db.session.add(orden_item)
+            subtotal += (cantidad or 0) * float(precio_unitario)
+
+        orden.total = max(subtotal - descuento, 0)
 
         db.session.commit()
 
@@ -567,6 +576,7 @@ def create_app():
         Permite actualizar:
         - codigo
         - fecha
+        - descuento
         - cliente (solo por id)
         - items (si se envía 'items', se reemplazan todos los items)
         """
@@ -578,6 +588,9 @@ def create_app():
 
         if "fecha" in data:
             orden.fecha = parse_iso_datetime(data["fecha"])
+
+        if "descuento" in data:
+            orden.descuento = max(float(data.get("descuento") or 0), 0.0)
 
         # Cliente (solo permitimos cambiar cliente por id para simplificar)
         if "cliente_id" in data:
@@ -596,6 +609,7 @@ def create_app():
             db.session.flush()
 
             items_data = data["items"]
+            subtotal = 0.0
             for item_data in items_data:
                 tipo = item_data.get("tipo")
                 cantidad = item_data.get("cantidad", 1)
@@ -647,6 +661,7 @@ def create_app():
                         precio_unitario=precio_unitario,
                         empleada=empleada,
                     )
+                    subtotal += (cantidad or 0) * float(precio_unitario)
                 else:
                     servicio_id = item_data.get("servicio_id")
                     servicio = Servicio.query.get(servicio_id)
@@ -660,8 +675,15 @@ def create_app():
                         precio_unitario=precio_unitario,
                         empleada=empleada,
                     )
+                    subtotal += (cantidad or 0) * float(precio_unitario)
 
                 db.session.add(orden_item)
+
+            orden.total = max(subtotal - float(orden.descuento or 0), 0)
+        elif "descuento" in data:
+            # Recalcular total con items existentes y nuevo descuento
+            subtotal = sum((item.cantidad or 0) * float(item.precio_unitario or 0) for item in orden.items)
+            orden.total = max(subtotal - float(orden.descuento or 0), 0)
 
         db.session.commit()
         return jsonify(orden_to_dict(orden))
