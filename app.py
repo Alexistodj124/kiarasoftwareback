@@ -532,6 +532,10 @@ def create_app():
                 producto = Producto.query.get(producto_id)
                 if not producto:
                     return jsonify({"error": f"producto {producto_id} no existe"}), 400
+                # Restar stock del producto según la cantidad solicitada
+                if producto.cantidad is not None and producto.cantidad < cantidad:
+                    return jsonify({"error": f"stock insuficiente para el producto {producto_id}"}), 400
+                producto.cantidad = (producto.cantidad or 0) - cantidad
 
                 orden_item = OrdenItem(
                     orden=orden,
@@ -600,6 +604,8 @@ def create_app():
         if "items" in data:
             # Borramos items actuales
             for item in list(orden.items):
+                if item.tipo == "producto" and item.producto:
+                    item.producto.cantidad = (item.producto.cantidad or 0) + item.cantidad
                 db.session.delete(item)
             db.session.flush()
 
@@ -620,6 +626,9 @@ def create_app():
                     producto = Producto.query.get(producto_id)
                     if not producto:
                         return jsonify({"error": f"producto {producto_id} no existe"}), 400
+                    if producto.cantidad is not None and producto.cantidad < cantidad:
+                        return jsonify({"error": f"stock insuficiente para el producto {producto_id}"}), 400
+                    producto.cantidad = (producto.cantidad or 0) - cantidad
                     orden_item = OrdenItem(
                         orden=orden,
                         tipo="producto",
@@ -648,6 +657,10 @@ def create_app():
     @app.route("/ordenes/<int:orden_id>", methods=["DELETE"])
     def eliminar_orden(orden_id):
         orden = Orden.query.get_or_404(orden_id)
+        # Reponer stock de productos antes de eliminar la orden
+        for item in orden.items:
+            if item.tipo == "producto" and item.producto:
+                item.producto.cantidad = (item.producto.cantidad or 0) + item.cantidad
         db.session.delete(orden)
         db.session.commit()
         return jsonify({"message": "Orden eliminada"})
