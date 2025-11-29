@@ -326,11 +326,7 @@ def create_app():
             "id": orden.id,
             "codigo": orden.codigo,
             "fecha": orden.fecha.isoformat(),
-            "empleada": {
-                "id": orden.empleada.id,
-                "nombre": orden.empleada.nombre,
-                "telefono": orden.empleada.telefono,
-            },
+            "empleada": None,  # compat: ahora las empleadas van a nivel de item
             "cliente": {
                 "id": orden.cliente.id,
                 "nombre": orden.cliente.nombre,
@@ -344,6 +340,11 @@ def create_app():
                     "servicio_id": item.servicio_id,
                     "cantidad": item.cantidad,
                     "precio_unitario": float(item.precio_unitario),
+                    "empleada": {
+                        "id": item.empleada.id,
+                        "nombre": item.empleada.nombre,
+                        "telefono": item.empleada.telefono,
+                    } if item.empleada else None,
                     "producto": producto_to_dict(item.producto) if item.tipo == "producto" else None,
                     "servicio": servicio_to_dict(item.servicio) if item.tipo == "servicio" else None,
                 }
@@ -419,7 +420,6 @@ def create_app():
         {
           "codigo": "ORD-001",
           "fecha": "2025-11-10T10:10:00Z",   // opcional
-          "empleada": "Ana",
           "cliente": {
             "id": 1                      // OPCIÓN 1: cliente existente
           }
@@ -429,8 +429,8 @@ def create_app():
           //   "telefono": "+502 5555 1111"
           // },
           "items": [
-            { "tipo": "producto", "producto_id": 1, "cantidad": 2, "precio_unitario": 250 },
-            { "tipo": "servicio", "servicio_id": 3, "cantidad": 1, "precio_unitario": 400 }
+            { "tipo": "producto", "producto_id": 1, "cantidad": 2, "precio_unitario": 250, "empleada_id": 1 },
+            { "tipo": "servicio", "servicio_id": 3, "cantidad": 1, "precio_unitario": 400, "empleada": { "nombre": "Ana", "telefono": "+502..." } }
           ]
         }
         """
@@ -462,36 +462,6 @@ def create_app():
                 db.session.add(cliente)
                 db.session.flush()  # para tener cliente.id antes de crear la orden
 
-    # ----- EMPLEADA -----
-        empleada_data = data.get("empleada")
-        if not empleada_data:
-            return jsonify({"error": "empleada es requerida"}), 400
-
-        empleada = None
-
-        # Si viene empleada.id, usamos empleada existente
-        if "id" in empleada_data:
-            empleada = Empleada.query.get(empleada_data["id"])
-            if not empleada:
-                return jsonify({"error": "empleada con ese id no existe"}), 400
-        else:
-            nombre_emp = empleada_data.get("nombre")
-            tel_emp = empleada_data.get("telefono")
-
-            if not nombre_emp:
-                return jsonify({"error": "empleada requiere al menos nombre"}), 400
-
-            # Puedes decidir si buscas por nombre+telefono o siempre creas nueva
-            # Aquí ejemplo: buscar por nombre+telefono
-            q = Empleada.query.filter_by(nombre=nombre_emp)
-            if tel_emp:
-                q = q.filter_by(telefono=tel_emp)
-            empleada = q.first()
-
-            if not empleada:
-                empleada = Empleada(nombre=nombre_emp, telefono=tel_emp)
-                db.session.add(empleada)
-                db.session.flush()
         # 2) Orden
         codigo = data.get("codigo")
         if not codigo:
@@ -503,7 +473,6 @@ def create_app():
         orden = Orden(
             codigo=codigo,
             fecha=fecha,
-            empleada=empleada,
             cliente=cliente
         )
         db.session.add(orden)
@@ -518,12 +487,36 @@ def create_app():
             tipo = item_data.get("tipo")
             cantidad = item_data.get("cantidad", 1)
             precio_unitario = item_data.get("precio_unitario")
+            empleada = None
 
             if tipo not in ("producto", "servicio"):
                 return jsonify({"error": "tipo de item debe ser 'producto' o 'servicio'"}), 400
 
             if precio_unitario is None:
                 return jsonify({"error": "precio_unitario es requerido en cada item"}), 400
+
+            # Resolver empleada por item (obligatorio)
+            empleada_id = item_data.get("empleada_id")
+            empleada_data = item_data.get("empleada")
+            if empleada_id is not None:
+                empleada = Empleada.query.get(empleada_id)
+                if not empleada:
+                    return jsonify({"error": f"empleada {empleada_id} no existe"}), 400
+            elif empleada_data is not None:
+                nombre_emp = empleada_data.get("nombre")
+                tel_emp = empleada_data.get("telefono")
+                if not nombre_emp:
+                    return jsonify({"error": "empleada en item requiere al menos nombre"}), 400
+                q = Empleada.query.filter_by(nombre=nombre_emp)
+                if tel_emp:
+                    q = q.filter_by(telefono=tel_emp)
+                empleada = q.first()
+                if not empleada:
+                    empleada = Empleada(nombre=nombre_emp, telefono=tel_emp)
+                    db.session.add(empleada)
+                    db.session.flush()
+            else:
+                return jsonify({"error": "cada item requiere una empleada (empleada_id o empleada{...})"}), 400
 
             if tipo == "producto":
                 producto_id = item_data.get("producto_id")
@@ -543,6 +536,7 @@ def create_app():
                     producto=producto,
                     cantidad=cantidad,
                     precio_unitario=precio_unitario,
+                    empleada=empleada,
                 )
             else:  # servicio
                 servicio_id = item_data.get("servicio_id")
@@ -558,6 +552,7 @@ def create_app():
                     servicio=servicio,
                     cantidad=cantidad,
                     precio_unitario=precio_unitario,
+                    empleada=empleada,
                 )
 
             db.session.add(orden_item)
@@ -572,7 +567,6 @@ def create_app():
         Permite actualizar:
         - codigo
         - fecha
-        - empleada
         - cliente (solo por id)
         - items (si se envía 'items', se reemplazan todos los items)
         """
@@ -584,14 +578,6 @@ def create_app():
 
         if "fecha" in data:
             orden.fecha = parse_iso_datetime(data["fecha"])
-
-            # Empleada (solo cambiar por id para simplificar)
-        if "empleada_id" in data:
-            empleada = Empleada.query.get(data["empleada_id"])
-            if not empleada:
-                return jsonify({"error": "empleada_id no válido"}), 400
-            orden.empleada = empleada
-
 
         # Cliente (solo permitimos cambiar cliente por id para simplificar)
         if "cliente_id" in data:
@@ -614,12 +600,36 @@ def create_app():
                 tipo = item_data.get("tipo")
                 cantidad = item_data.get("cantidad", 1)
                 precio_unitario = item_data.get("precio_unitario")
+                empleada = None
 
                 if tipo not in ("producto", "servicio"):
                     return jsonify({"error": "tipo de item debe ser 'producto' o 'servicio'"}), 400
 
                 if precio_unitario is None:
                     return jsonify({"error": "precio_unitario es requerido en cada item"}), 400
+
+                # Resolver empleada por item (obligatorio)
+                empleada_id = item_data.get("empleada_id")
+                empleada_data = item_data.get("empleada")
+                if empleada_id is not None:
+                    empleada = Empleada.query.get(empleada_id)
+                    if not empleada:
+                        return jsonify({"error": f"empleada {empleada_id} no existe"}), 400
+                elif empleada_data is not None:
+                    nombre_emp = empleada_data.get("nombre")
+                    tel_emp = empleada_data.get("telefono")
+                    if not nombre_emp:
+                        return jsonify({"error": "empleada en item requiere al menos nombre"}), 400
+                    q = Empleada.query.filter_by(nombre=nombre_emp)
+                    if tel_emp:
+                        q = q.filter_by(telefono=tel_emp)
+                    empleada = q.first()
+                    if not empleada:
+                        empleada = Empleada(nombre=nombre_emp, telefono=tel_emp)
+                        db.session.add(empleada)
+                        db.session.flush()
+                else:
+                    return jsonify({"error": "cada item requiere una empleada (empleada_id o empleada{...})"}), 400
 
                 if tipo == "producto":
                     producto_id = item_data.get("producto_id")
@@ -635,6 +645,7 @@ def create_app():
                         producto=producto,
                         cantidad=cantidad,
                         precio_unitario=precio_unitario,
+                        empleada=empleada,
                     )
                 else:
                     servicio_id = item_data.get("servicio_id")
@@ -647,6 +658,7 @@ def create_app():
                         servicio=servicio,
                         cantidad=cantidad,
                         precio_unitario=precio_unitario,
+                        empleada=empleada,
                     )
 
                 db.session.add(orden_item)

@@ -139,10 +139,6 @@ class Orden(db.Model):
     cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=False)
     cliente = db.relationship("Cliente", back_populates="ordenes")
 
-    # Relación con empleada (muchas órdenes -> una empleada)
-    empleada_id = db.Column(db.Integer, db.ForeignKey("empleadas.id"), nullable=False)
-    empleada = db.relationship("Empleada", back_populates="ordenes")
-
     # Items de esta orden (productos/servicios)
     items = db.relationship(
         "OrdenItem",
@@ -167,6 +163,10 @@ class OrdenItem(db.Model):
     # Relación con la orden
     orden_id = db.Column(db.Integer, db.ForeignKey("ordenes.id"), nullable=False)
     orden = db.relationship("Orden", back_populates="items")
+
+    # Empleada asociada a este item (cada item puede ser vendido por alguien diferente)
+    empleada_id = db.Column(db.Integer, db.ForeignKey("empleadas.id"), nullable=False)
+    empleada = db.relationship("Empleada", back_populates="orden_items")
 
     # Indicamos si este item es producto o servicio
     tipo = db.Column(
@@ -220,8 +220,8 @@ class Empleada(db.Model):
     activo = db.Column(db.Boolean, default=True, nullable=False)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    # Una empleada puede tener muchas órdenes
-    ordenes = db.relationship("Orden", back_populates="empleada")
+    # Una empleada puede tener muchos items en diferentes órdenes
+    orden_items = db.relationship("OrdenItem", back_populates="empleada")
 
     def __repr__(self):
         return f"<Empleada {self.nombre}>"
