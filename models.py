@@ -134,6 +134,8 @@ class Orden(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     codigo = db.Column(db.String(20), unique=True, nullable=False)
     fecha = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    tipo_pago = db.Column(db.String(50), nullable=False)
+    referencia = db.Column(db.String(120), nullable=True)
     descuento = db.Column(Numeric(10, 2), nullable=False, default=0)
     total = db.Column(Numeric(10, 2), nullable=False, default=0)
 

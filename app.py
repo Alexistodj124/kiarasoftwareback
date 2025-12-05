@@ -326,6 +326,8 @@ def create_app():
             "id": orden.id,
             "codigo": orden.codigo,
             "fecha": orden.fecha.isoformat(),
+            "tipo_pago": orden.tipo_pago,
+            "referencia": orden.referencia,
             "descuento": float(orden.descuento) if orden.descuento is not None else 0.0,
             "total": float(orden.total) if orden.total is not None else 0.0,
             "empleada": None,  # compat: ahora las empleadas van a nivel de item
@@ -421,6 +423,8 @@ def create_app():
 
         {
           "codigo": "ORD-001",
+          "tipo_pago": "efectivo",
+          "referencia": "TRX123",          // opcional
           "fecha": "2025-11-10T10:10:00Z",   // opcional
           "descuento": 25.50,                // opcional, descuento fijo en moneda
           "cliente": {
@@ -466,6 +470,10 @@ def create_app():
                 db.session.flush()  # para tener cliente.id antes de crear la orden
 
         # 2) Orden
+        tipo_pago = data.get("tipo_pago")
+        if not tipo_pago:
+            return jsonify({"error": "tipo_pago es requerido"}), 400
+        referencia = data.get("referencia")
         codigo = data.get("codigo")
         if not codigo:
             return jsonify({"error": "codigo de orden es requerido"}), 400
@@ -478,6 +486,8 @@ def create_app():
             codigo=codigo,
             fecha=fecha,
             cliente=cliente,
+            tipo_pago=tipo_pago,
+            referencia=referencia,
             descuento=descuento,
         )
         db.session.add(orden)
@@ -588,6 +598,14 @@ def create_app():
 
         if "fecha" in data:
             orden.fecha = parse_iso_datetime(data["fecha"])
+
+        if "tipo_pago" in data:
+            if not data["tipo_pago"]:
+                return jsonify({"error": "tipo_pago no puede ser vacío"}), 400
+            orden.tipo_pago = data["tipo_pago"]
+
+        if "referencia" in data:
+            orden.referencia = data["referencia"]
 
         if "descuento" in data:
             orden.descuento = max(float(data.get("descuento") or 0), 0.0)
